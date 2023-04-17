@@ -161,6 +161,7 @@ window.WebBt.addEventListener("characteristicvaluechanged", ctx => {
     ctxRecv.value = strRecv;
     elem = document.createElement("li");
     elem.innerHTML = "收到数据 " + strRecv;
+    elem.style = "height:10;font-size:80%";
     logList.appendChild(elem);
 });
 </script>
