@@ -1,0 +1,169 @@
+﻿<html>
+<head>
+    <title>Web BlueTooth</title>
+</head>
+
+<script type="text/javascript">
+(function() {
+    'use strict';
+
+    // 蓝牙设备访问的一般过程：
+    // 配对得设备device - 连接得服务器server - 访问得服务service ◆-> 访问得写通道characteristic -> 写数据
+    //                                                      或 ◆-> 访问得读通道characteristic -> 监听可读数据
+
+    //const WEBBT_FILTER = { acceptAllDevices: true }; // 过滤显示所有设备
+    //const WEBBT_FILTER = { filters: [{ namePrefix: "J01N" }]} // 过滤显示包含名字前缀的设备
+    const WEBBT_FILTER = { filters: [{ services: [0xFFE0] }]} // 过滤显示包含特定服务的设备
+    const WEBBT_SERVICE   = 0xFFE0; // 服务号
+    const WEBBT_WRITE_CH  = 0xFFE2; // 写特征通道
+    const WEBBT_READ_CH   = 0xFFE1; // 读特征通道
+
+    class WebBt {
+        constructor() {
+            this._DEVICE   = null;
+            this._SERVER   = null;
+            this._SERVICE  = null;
+            this._WRITE_CH = null;
+            this._READ_CH  = null;
+            this._EVENT    = new Map;
+        }
+
+        async connect() {
+            try {
+                this.onStateChanged("选择蓝牙透传设备...");
+                this._DEVICE = await navigator.bluetooth.requestDevice(WEBBT_FILTER);
+                this.onStateChanged("设备" + this._DEVICE.name + " # " + this._DEVICE.id + "连接成功");
+
+                this.onStateChanged("连接GATT服务器...");
+                this._SERVER = await this._DEVICE.gatt.connect();
+                this.onStateChanged("连接GATT服务器成功");
+
+                this.onStateChanged("获得通信服务...");
+                this._SERVICE = await this._SERVER.getPrimaryService(WEBBT_SERVICE);
+                this.onStateChanged("获得通信服务" + this._SERVICE.uuid + "成功");
+
+                this.onStateChanged("获得写通道...");
+                this._WRITE_CH = await this._SERVICE.getCharacteristic(WEBBT_WRITE_CH)
+                this.onStateChanged("获得写通道" + this._WRITE_CH.uuid + "成功");
+
+                this.onStateChanged("获得读通道...");
+                this._READ_CH = await this._SERVICE.getCharacteristic(WEBBT_READ_CH);
+                this.onStateChanged("获得读通道" + this._READ_CH.uuid + "成功");
+                this.onStateChanged("蓝牙透传设备初始化完成");
+
+                if (this._EVENT["characteristicvaluechanged"]) {
+                    this._READ_CH.addEventListener("characteristicvaluechanged", this._EVENT["characteristicvaluechanged"]);
+                    this._READ_CH.startNotifications();
+                }
+            }
+            catch (error) {
+                this.onStateChanged("!!!" + error);
+            }
+            finally {
+            }
+        }
+
+        isConnected() {
+            return (!!this._WRITE_CH) && (!!this._READ_CH);
+        }
+
+        onStateChanged(state) {
+            if (this._EVENT["statechanged"]) {
+                this._EVENT["statechanged"](state);
+            }
+            console.log(state);
+        }
+
+        // ctx 为 Uint8Array 类型
+        async send(ctx) {
+            try {
+                await this._WRITE_CH.writeValue(ctx);
+                this.onStateChanged("发送成功");
+            }
+            catch (error) {
+                this.onStateChanged("!!!" + error);
+            }
+        }
+
+        // 支持蓝牙设备事件 characteristicvaluechanged (回调的参数ctx的 ctx.target.value 即接收的内容)
+        // 支持自定义事件 statechanged (回调的参数state为状态描述)
+        addEventListener(event, func) {
+            this._EVENT[event] = func;
+            if (event == "characteristicvaluechanged" && this.isConnected()) {
+                this._READ_CH.addEventListener("characteristicvaluechanged", func);
+                this._READ_CH.startNotifications();
+            }
+        }
+    }
+
+    window.WebBt = new WebBt();
+})();
+
+</script>
+<body>
+<button id="conn" style="width:300;background-color:#FFCC80">连接蓝牙透传设备</button>
+<br>
+<br>
+<button id="send" style="width:300">发送 >>></button>
+<br>
+<a>待发送的数据：</a>
+<br>
+<textarea id="send-ctx" rows="3" style="width:300" maxlength="500">abcd1234</textarea>
+<br>
+<a>接收的数据：</a>
+<br>
+<textarea id="recv-ctx" rows="3" style="width:300" maxlength="500"></textarea>
+<br>
+<ul id="log-list">
+</ul>
+
+<script type="text/javascript">
+let g_server = null;
+btnConn = document.getElementById("conn");
+btnConn.addEventListener("click", function(){
+    window.WebBt.connect();
+})
+
+ctxSend = document.getElementById("send-ctx");
+ctxRecv = document.getElementById("recv-ctx");
+logList = document.getElementById("log-list");
+
+btnSend = document.getElementById("send");
+btnSend.addEventListener("click", function(){
+    let strSend = ctxSend.value.toString();
+    var ctx = new Uint8Array(strSend.length);
+    for (i = 0; i < strSend.length; i++) {
+        ctx[i] = strSend.charCodeAt(i);
+    }
+    elem = document.createElement("li");
+    elem.innerHTML = "发送数据 " + strSend;
+    logList.appendChild(elem);
+    window.WebBt.send(ctx);
+})
+
+window.WebBt.addEventListener("statechanged", state => {
+    if (window.WebBt.isConnected()) {
+        btnConn.style.backgroundColor = "#73E673";
+    } else {
+        btnConn.style.backgroundColor = "#FFCC80";
+    }
+    elem = document.createElement("li");
+    elem.innerHTML = state;
+    logList.appendChild(elem);
+});
+
+window.WebBt.addEventListener("characteristicvaluechanged", ctx => {
+    var recv = new Uint8Array(ctx.target.value.buffer);
+    let strRecv = "";
+    for (i = 0; i < recv.length; i++) {
+        strRecv += String.fromCharCode(recv[i]);
+    }
+    ctxRecv.value = strRecv;
+    elem = document.createElement("li");
+    elem.innerHTML = "收到数据 " + strRecv;
+    logList.appendChild(elem);
+});
+</script>
+</body>
+
+</html>
