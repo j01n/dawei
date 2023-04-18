@@ -49,12 +49,16 @@
                 this.onStateChanged("获得读通道...");
                 this._READ_CH = await this._SERVICE.getCharacteristic(WEBBT_READ_CH);
                 this.onStateChanged("获得读通道" + this._READ_CH.uuid + "成功");
-                this.onStateChanged("蓝牙透传设备初始化完成");
-
+                
                 if (this._EVENT["characteristicvaluechanged"]) {
                     this._READ_CH.addEventListener("characteristicvaluechanged", this._EVENT["characteristicvaluechanged"]);
                     this._READ_CH.startNotifications();
+                    this.onStateChanged("监听读通道成功");
+                } else {
+                    this.onStateChanged("监听读通道失败");
                 }
+
+                this.onStateChanged("蓝牙透传设备初始化完成");
             }
             catch (error) {
                 this.onStateChanged("!!!" + error);
@@ -129,7 +133,14 @@ ctxRecv = document.getElementById("recv-ctx");
 logList = document.getElementById("log-list");
 
 function addLog(log) {
-    elem = document.createElement("li");
+    var elem = null;
+    if (logList.getElementsByTagName("li").length > 40) {
+        elem = logList.childNodes[0];
+        logList.removeChild(elem);
+    } else {
+        elem = document.createElement("li");
+    }
+
     elem.innerHTML = log;
     elem.style = "height:14;font-size:12";
     logList.appendChild(elem);
